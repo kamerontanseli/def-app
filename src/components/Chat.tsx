@@ -1,0 +1,295 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Send } from "lucide-react";
+import {
+  OPENROUTER_URL,
+  OPENROUTER_KEY,
+  tools,
+  getHabitProgressTool,
+  getLeadershipScoresTool,
+  SYSTEM_PROMPT,
+} from "@/lib/ai";
+
+type Role = "system" | "user" | "assistant" | "tool";
+
+type ChatMessage = {
+  role: Role;
+  content: string;
+  name?: string;
+  tool_call_id?: string;
+};
+
+export default function Chat() {
+  const [apiKey, setApiKey] = useState<string>("");
+  const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [showKey, setShowKey] = useState<boolean>(false);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // OpenAI-compatible message history for API calls (system is added per request)
+  const [apiHistory, setApiHistory] = useState<any[]>([]);
+  const [showButton, setShowButton] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(OPENROUTER_KEY);
+    if (stored) {
+      setApiKey(stored);
+    } else {
+      setShowKeyModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Autoscroll on new messages
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages.length]);
+
+  const systemPrompt = SYSTEM_PROMPT;
+
+  function openKeyModal() {
+    setApiKeyDraft(apiKey || "");
+    setShowKeyModal(true);
+  }
+
+  function handleSaveKey() {
+    const val = apiKeyDraft.trim();
+    if (!val) return;
+    localStorage.setItem(OPENROUTER_KEY, val);
+    setApiKey(val);
+    setShowKeyModal(false);
+  }
+
+  async function sendMessage() {
+    if (!apiKey || !input.trim()) return;
+    setError(null);
+    setBusy(true);
+    const userMsg: ChatMessage = { role: "user", content: input.trim() };
+    setMessages((m) => [...m, userMsg]);
+    setInput("");
+    const referer = typeof window !== "undefined" ? window.location.origin : "";
+
+    try {
+      const payload = {
+        model: "openai/gpt-5-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...apiHistory,
+          { role: "user", content: userMsg.content },
+        ],
+        tools,
+        tool_choice: "auto" as const,
+        temperature: 0.3,
+      };
+
+      const res = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          ...(referer ? { "HTTP-Referer": referer, "X-Title": "DEF Habits - Jocko Chat" } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const choice = data.choices?.[0];
+      const msg = choice?.message;
+
+      // Handle tool calls (single pass for simplicity)
+      if (msg?.tool_calls?.length) {
+        // Record assistant tool call message in both UI and API history
+        const assistantToolCall: ChatMessage = {
+          role: "assistant",
+          content: msg.content || "",
+        };
+        setMessages((m) => [...m, assistantToolCall]);
+        setApiHistory((h) => [
+          ...h,
+          { role: "user", content: userMsg.content },
+          { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls },
+        ]);
+
+        const toolResults: ChatMessage[] = [];
+        const toolApiMsgs: any[] = [];
+        for (const tc of msg.tool_calls) {
+          const name = tc.function?.name;
+          const id = tc.id;
+          let result: any = null;
+          if (name === "get_habit_progress") {
+            result = getHabitProgressTool();
+          } else if (name === "get_leadership_scores") {
+            result = getLeadershipScoresTool();
+          }
+          const contentStr = JSON.stringify(result ?? { error: "unknown tool" });
+          toolResults.push({
+            role: "tool",
+            content: contentStr,
+            tool_call_id: id,
+            name,
+          });
+          toolApiMsgs.push({ role: "tool", content: contentStr, tool_call_id: id });
+        }
+        setMessages((m) => [...m, ...toolResults]);
+        setApiHistory((h) => [...h, ...toolApiMsgs]);
+
+        // Follow-up call including the tool results so the assistant can respond
+        const followPayload = {
+          model: "openai/gpt-5-mini",
+          messages: [{ role: "system", content: systemPrompt }, ...apiHistory, { role: "user", content: userMsg.content }, { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls }, ...toolApiMsgs],
+          temperature: 0.3,
+        };
+        const res2 = await fetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            ...(referer ? { "HTTP-Referer": referer, "X-Title": "DEF Habits - Jocko Chat" } : {}),
+          },
+          body: JSON.stringify(followPayload),
+        });
+        if (!res2.ok) {
+          const txt = await res2.text();
+          throw new Error(txt || `HTTP ${res2.status}`);
+        }
+        const data2 = await res2.json();
+        const finalMsg = data2.choices?.[0]?.message?.content ?? "";
+        setMessages((m) => [...m, { role: "assistant", content: finalMsg }]);
+        setApiHistory((h) => [...h, { role: "assistant", content: finalMsg }]);
+      } else {
+        // Regular assistant response
+        const content = msg?.content ?? "";
+        setMessages((m) => [...m, { role: "assistant", content }]);
+        setApiHistory((h) => [
+          ...h,
+          { role: "user", content: userMsg.content },
+          { role: "assistant", content },
+        ]);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 bg-black h-full">
+      <div className="flex items-center justify-between">
+        <div className="font-semibold text-white flex items-center gap-2"><img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-10" /> Chat w/ Jocko</div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openKeyModal}>
+            {apiKey ? "Change key" : "Set key"}
+          </Button>
+        </div>
+      </div>
+
+      <div
+        ref={listRef}
+        className="flex-1 max-h-[70vh] overflow-y-auto border border-border rounded p-3 space-y-6 bg-neutral-950"
+      >
+        {messages.length === 0 && (
+          <div className="text-sm text-gray-400">
+            Ask me about your progress, discipline, or priorities.
+          </div>
+        )}
+        {messages.map((m, idx) => (
+          <div key={idx} className={`space-y-2 ${m.role === "user" ? "flex flex-col items-end" : ""}`}>
+            <div className="text-xs text-gray-500 flex items-center gap-2 uppercase">
+              {m.role === "assistant" && (
+                <img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-5" />
+              )}{m.role === "tool" && (
+                <img src="/hammer.png" alt="Hammer" className="rounded-xs h-5" />
+              )}{m.role === "user"
+                ? "You"
+                : m.role === "assistant"
+                ? "Jocko"
+                : m.role === "tool"
+                ? `Tool: ${m.name ?? "result"}`
+                : m.role}
+            </div>
+            {m.role === "tool" ? null : (
+              <div className="text-xs whitespace-pre-wrap leading-relaxed break-words">{m.content}</div>
+            )}
+          </div>
+        ))}
+        {busy && (
+          <div className="space-y-1">
+            <div className="text-xs text-gray-500 uppercase flex items-center gap-2"><img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-5" /> Jocko</div>
+            <div className="text-xs whitespace-pre-wrap break-words italic text-gray-400">Thinking...</div>
+          </div>
+        )}
+      </div>
+
+      {error && <div className="text-red-500 text-sm">{error}</div>}
+
+      <div className="relative">
+        <textarea
+          placeholder="Type your message"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setShowButton(e.target.value.trim().length > 0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (input.trim()) {
+                sendMessage();
+              }
+            }
+          }}
+          disabled={!apiKey || busy}
+          className="w-full min-h-[80px] resize-none rounded-md border border-input bg-background px-3 py-2 pr-12 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          rows={3}
+        />
+        {showButton && (
+          <Button
+            onClick={sendMessage}
+            disabled={!apiKey || busy}
+            className="absolute bottom-4 right-2 h-8 w-8 rounded-full p-0"
+            size="sm"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => apiKey ? setShowKeyModal(false) : null} />
+          <div className="relative z-10 w-full max-w-xs rounded-lg border border-border bg-neutral-900 p-4 shadow-xl">
+            <div className="text-lg font-semibold mb-2">Enter OpenRouter API Key</div>
+            <p className="text-xs text-gray-400 mb-3">Stored locally only. You can create a key on openrouter.ai.</p>
+            <Input
+              placeholder="sk-or-v1-..."
+              type={showKey ? "text" : "password"}
+              value={apiKeyDraft}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <Checkbox id="show-key" checked={showKey} onCheckedChange={(v) => setShowKey(v === true)} />
+              <Label htmlFor="show-key">Show key</Label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              {apiKey && (
+                <Button variant="ghost" onClick={() => setShowKeyModal(false)}>Cancel</Button>
+              )}
+              <Button onClick={handleSaveKey} disabled={!apiKeyDraft.trim()}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
