@@ -206,7 +206,7 @@ export default function Chat() {
 
       <div
         ref={listRef}
-        className="flex-1 max-h-[70vh] overflow-y-auto border border-border rounded p-3 space-y-6 bg-neutral-950"
+        className="flex-1 max-h-[50vh] overflow-y-auto border border-border rounded p-3 space-y-6 bg-neutral-950"
       >
         {messages.length === 0 && (
           <div className="text-sm text-gray-400">
