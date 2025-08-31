@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { format, subDays, addDays } from 'date-fns';
 import { useHabits } from '@/hooks/useHabits';
 import { leadershipAttributes } from '@/lib/types';
@@ -36,8 +37,17 @@ const iconMap = {
   Star
 };
 
+type Role = 'system' | 'user' | 'assistant' | 'tool';
+type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+type APIMsg =
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string; tool_calls?: ToolCall[] }
+  | { role: 'tool'; content: string; tool_call_id: string };
+type ChatCompletionResponse = { choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }> };
+
 export default function Home() {
-  const { habits, completions, scores, toggleCompletion, setScore, getCompletion, getScore, getToday } = useHabits();
+  const { habits, toggleCompletion, setScore, getCompletion, getScore, getToday } = useHabits();
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = previous week, etc.
   const [activeTab, setActiveTab] = useState("assessment");
@@ -86,7 +96,7 @@ export default function Home() {
       const userMsg =
         "Send me a short text as Jocko: direct, disciplined, motivating. Use my current habits and leadership scores; call tools if helpful to fetch the last 7 days. Keep it punchy: 1–3 short sentences, no preamble.";
 
-      const payload: any = {
+      const payload = {
         model: 'openai/gpt-5-mini',
         messages: [
           { role: 'system', content: systemPrompt },
@@ -110,16 +120,16 @@ export default function Home() {
         const txt = await res.text();
         throw new Error(txt || `HTTP ${res.status}`);
       }
-      const data = await res.json();
+      const data: ChatCompletionResponse = await res.json();
       const choice = data.choices?.[0];
       const msg = choice?.message;
 
       let finalContent = msg?.content ?? '';
       if (msg?.tool_calls?.length) {
-        const toolApiMsgs: any[] = [];
+        const toolApiMsgs: { role: 'tool'; content: string; tool_call_id: string }[] = [];
         for (const tc of msg.tool_calls) {
           const name = tc.function?.name;
-          let result: any = null;
+          let result: unknown = null;
           if (name === 'get_habit_progress') {
             result = getHabitProgressTool();
           } else if (name === 'get_leadership_scores') {
@@ -128,7 +138,7 @@ export default function Home() {
           const contentStr = JSON.stringify(result ?? { error: 'unknown tool' });
           toolApiMsgs.push({ role: 'tool', content: contentStr, tool_call_id: tc.id });
         }
-        const followPayload: any = {
+        const followPayload = {
           model: 'openai/gpt-5-mini',
           messages: [
             { role: 'system', content: systemPrompt },
@@ -151,7 +161,7 @@ export default function Home() {
           const txt = await res2.text();
           throw new Error(txt || `HTTP ${res2.status}`);
         }
-        const data2 = await res2.json();
+        const data2: ChatCompletionResponse = await res2.json();
         finalContent = data2.choices?.[0]?.message?.content ?? '';
       }
 
@@ -161,8 +171,9 @@ export default function Home() {
         localStorage.setItem('jocko_daily_message', finalContent || '');
         localStorage.setItem('jocko_daily_last', String(Date.now()));
       } catch {}
-    } catch (e: any) {
-      setAiError(e?.message || 'Failed to fetch Jocko message');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAiError(msg || 'Failed to fetch Jocko message');
     } finally {
       setIsLoadingMessage(false);
     }
@@ -194,7 +205,7 @@ export default function Home() {
   const leadershipData = useMemo(() => dates.map(date => ({
     date: format(new Date(date), 'MMM dd'),
     average: leadershipAttributes.reduce((sum, attr) => sum + getScore(attr.key, date), 0) / leadershipAttributes.length
-  })), [dates, scores]);
+  })), [dates, getScore]);
 
   useEffect(() => {
     // Load last stored message immediately
@@ -227,7 +238,7 @@ export default function Home() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsContent value="assessment">
               <div className="grid grid-cols-7 gap-2 mb-8">
-                {dates.map((date, index) => {
+                {dates.map((date) => {
                   const isFuture = false; // All dates are now in the past or today
                   return (
                     <Button
@@ -256,8 +267,8 @@ export default function Home() {
               <Card className="mt-4 bg-black">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className='flex items-center gap-2'>
-                    <img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-10" />
-                    JOCKO'S MESSAGE
+                    <Image src="/jocko-no-bg.png" alt="Jocko" width={40} height={40} className="rounded-xs h-10" />
+                    JOCKO&apos;S MESSAGE
                   </CardTitle>
                   <Button variant="outline" size="sm" onClick={() => setActiveTab("chat")}>
                       <MessageSquare className="w-4 h-4 mr-2" />

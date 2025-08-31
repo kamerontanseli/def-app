@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +25,14 @@ type ChatMessage = {
   tool_call_id?: string;
 };
 
+type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
+type APIMsg =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; tool_calls?: ToolCall[] }
+  | { role: "tool"; content: string; tool_call_id: string };
+type ChatCompletionResponse = { choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }> };
+
 export default function Chat() {
   const [apiKey, setApiKey] = useState<string>("");
   const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
@@ -34,7 +43,7 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // OpenAI-compatible message history for API calls (system is added per request)
-  const [apiHistory, setApiHistory] = useState<any[]>([]);
+  const [apiHistory, setApiHistory] = useState<APIMsg[]>([]);
   const [showButton, setShowButton] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +111,7 @@ export default function Chat() {
         const txt = await res.text();
         throw new Error(txt || `HTTP ${res.status}`);
       }
-      const data = await res.json();
+      const data: ChatCompletionResponse = await res.json();
       const choice = data.choices?.[0];
       const msg = choice?.message;
 
@@ -121,11 +130,11 @@ export default function Chat() {
         ]);
 
         const toolResults: ChatMessage[] = [];
-        const toolApiMsgs: any[] = [];
+        const toolApiMsgs: APIMsg[] = [];
         for (const tc of msg.tool_calls) {
           const name = tc.function?.name;
           const id = tc.id;
-          let result: any = null;
+          let result: unknown = null;
           if (name === "get_habit_progress") {
             result = getHabitProgressTool();
           } else if (name === "get_leadership_scores") {
@@ -162,7 +171,7 @@ export default function Chat() {
           const txt = await res2.text();
           throw new Error(txt || `HTTP ${res2.status}`);
         }
-        const data2 = await res2.json();
+        const data2: ChatCompletionResponse = await res2.json();
         const finalMsg = data2.choices?.[0]?.message?.content ?? "";
         setMessages((m) => [...m, { role: "assistant", content: finalMsg }]);
         setApiHistory((h) => [...h, { role: "assistant", content: finalMsg }]);
@@ -176,8 +185,9 @@ export default function Chat() {
           { role: "assistant", content },
         ]);
       }
-    } catch (e: any) {
-      setError(e?.message || "Request failed");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || "Request failed");
     } finally {
       setBusy(false);
     }
@@ -186,7 +196,7 @@ export default function Chat() {
   return (
     <div className="flex flex-col gap-3 bg-black h-full">
       <div className="flex items-center justify-between">
-        <div className="font-semibold text-white flex items-center gap-2"><img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-10" /> Chat w/ Jocko</div>
+        <div className="font-semibold text-white flex items-center gap-2"><Image src="/jocko-no-bg.png" alt="Jocko" width={40} height={40} className="rounded-xs h-10" /> Chat w/ Jocko</div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={openKeyModal}>
             {apiKey ? "Change key" : "Set key"}
@@ -207,9 +217,9 @@ export default function Chat() {
           <div key={idx} className={`space-y-2 ${m.role === "user" ? "flex flex-col items-end" : ""}`}>
             <div className="text-xs text-gray-500 flex items-center gap-2 uppercase">
               {m.role === "assistant" && (
-                <img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-5" />
+                <Image src="/jocko-no-bg.png" alt="Jocko" width={20} height={20} className="rounded-xs h-5" />
               )}{m.role === "tool" && (
-                <img src="/hammer.png" alt="Hammer" className="rounded-xs h-5" />
+                <Image src="/hammer.png" alt="Hammer" width={20} height={20} className="rounded-xs h-5" />
               )}{m.role === "user"
                 ? "You"
                 : m.role === "assistant"
@@ -225,7 +235,7 @@ export default function Chat() {
         ))}
         {busy && (
           <div className="space-y-1">
-            <div className="text-xs text-gray-500 uppercase flex items-center gap-2"><img src="/jocko-no-bg.png" alt="Jocko" className="rounded-xs h-5" /> Jocko</div>
+            <div className="text-xs text-gray-500 uppercase flex items-center gap-2"><Image src="/jocko-no-bg.png" alt="Jocko" width={20} height={20} className="rounded-xs h-5" /> Jocko</div>
             <div className="text-xs whitespace-pre-wrap break-words italic text-gray-400">Thinking...</div>
           </div>
         )}

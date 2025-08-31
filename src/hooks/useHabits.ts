@@ -33,10 +33,7 @@ export function useHabits() {
     }
   }, []);
 
-  const saveHabits = (newHabits: Habit[]) => {
-    setHabits(newHabits);
-    localStorage.setItem(HABITS_KEY, JSON.stringify(newHabits));
-  };
+  // If habit editing is added later, reintroduce saveHabits.
 
   const saveCompletions = (newCompletions: HabitCompletion[]) => {
     setCompletions(newCompletions);

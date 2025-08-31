@@ -1,4 +1,4 @@
-import { leadershipAttributes } from '@/lib/types';
+import { leadershipAttributes, Habit, HabitCompletion, LeadershipScore } from '@/lib/types';
 
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENROUTER_KEY = 'openrouter_api_key';
@@ -40,8 +40,8 @@ function readLocal<T>(key: string, fallback: T): T {
 
 export function getHabitProgressTool() {
   const dates = getLast7Dates();
-  const habits = readLocal<any[]>('def-habits', []);
-  const completions = readLocal<any[]>('def-completions', []);
+  const habits = readLocal<Habit[]>('def-habits', []);
+  const completions = readLocal<HabitCompletion[]>('def-completions', []);
 
   const perDay = dates.map((date) => {
     const dayCompletions = completions.filter((c) => c.date === date && c.completed);
@@ -93,7 +93,7 @@ export function getHabitProgressTool() {
 
 export function getLeadershipScoresTool() {
   const dates = getLast7Dates();
-  const scores = readLocal<any[]>('def-scores', []);
+  const scores = readLocal<LeadershipScore[]>('def-scores', []);
 
   const attributeKeys = leadershipAttributes.map((a) => a.key);
   const perDay = dates.map((date) => {
