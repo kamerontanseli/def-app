@@ -1,63 +1,28 @@
-const CACHE_NAME = 'def-habits-v1';
-const urlsToCache = [
-  '/',
-  '/manifest.json',
-  '/offline.html',
-  // Favicons & PWA icons
-  '/favicon.ico',
-  '/favicon-16x16.png',
-  '/favicon-32x32.png',
-  '/apple-touch-icon.png',
-  '/android-chrome-192x192.png',
-  '/android-chrome-512x512.png',
-  // Existing SVG assets
-  '/file.svg',
-  '/globe.svg',
-  '/next.svg',
-  '/vercel.svg',
-  '/window.svg',
-];
+// Minimal service worker to keep the app installable
+// without implementing any offline caching.
 
-// Install Service Worker
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache);
-      })
-  );
+// Immediately activate the new SW on install
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-// Fetch Event - Serve from cache when offline
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request);
-      })
-      .catch(() => {
-        // Return offline fallback for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/offline.html');
-        }
-        // For other requests, return a simple error response
-        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-      })
-  );
-});
-
-// Activate Service Worker
+// Take control of clients and clear any legacy caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    (async () => {
+      // Remove any caches created by previous versions
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.clients.claim();
+    })()
   );
+});
+
+// Pass-through fetch handler: no caching, always hit network
+self.addEventListener('fetch', (event) => {
+  // Only handle same-origin GET requests; let the browser handle others
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  event.respondWith(fetch(event.request));
 });
