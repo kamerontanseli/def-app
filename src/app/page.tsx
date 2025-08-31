@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { format, subDays, addDays } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { useHabits } from '@/hooks/useHabits';
 import { leadershipAttributes } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { D3BarChart } from '@/components/D3BarChart';
 import { D3LineChart } from '@/components/D3LineChart';
 import { KnowledgeBase } from '@/components/KnowledgeBase';
+import { Workouts } from '@/components/Workouts';
 import { Sunrise, Dumbbell, CheckSquare, Droplets, Apple, X, BookOpen, Brain, Star, Target, TrendingUp, ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import Chat from '@/components/Chat';
 import {
@@ -58,12 +59,12 @@ export default function Home() {
 
   const baseDate = addDays(new Date(), weekOffset * 7); // Base date for the current week view
   const dates = [
-    format(subDays(baseDate, 6), 'yyyy-MM-dd'), // 6 days ago from base date
-    format(subDays(baseDate, 5), 'yyyy-MM-dd'), // 5 days ago from base date
-    format(subDays(baseDate, 4), 'yyyy-MM-dd'), // 4 days ago from base date
-    format(subDays(baseDate, 3), 'yyyy-MM-dd'), // 3 days ago from base date
-    format(subDays(baseDate, 2), 'yyyy-MM-dd'), // 2 days ago from base date
-    format(subDays(baseDate, 1), 'yyyy-MM-dd'), // 1 day ago from base date
+    format(addDays(baseDate, -6), 'yyyy-MM-dd'), // 6 days ago from base date
+    format(addDays(baseDate, -5), 'yyyy-MM-dd'), // 5 days ago from base date
+    format(addDays(baseDate, -4), 'yyyy-MM-dd'), // 4 days ago from base date
+    format(addDays(baseDate, -3), 'yyyy-MM-dd'), // 3 days ago from base date
+    format(addDays(baseDate, -2), 'yyyy-MM-dd'), // 2 days ago from base date
+    format(addDays(baseDate, -1), 'yyyy-MM-dd'), // 1 day ago from base date
     format(baseDate, 'yyyy-MM-dd'), // base date (current day for this week view)
   ];
 
@@ -389,8 +390,8 @@ export default function Home() {
                      `${weekOffset} Weeks Ahead`}
                   </h2>
                   <p className="text-sm text-gray-400">
-                    {format(subDays(baseDate, 6), 'MMM dd')} - {format(baseDate, 'MMM dd, yyyy')}
-                  </p>
+                    {format(addDays(baseDate, -6), 'MMM dd')} - {format(baseDate, 'MMM dd, yyyy')}
+                </p>
                 </div>
                 <Button
                   variant="outline"
@@ -433,9 +434,12 @@ export default function Home() {
             <TabsContent value="chat">
               <Chat />
             </TabsContent>
+            <TabsContent value="workouts">
+              <Workouts />
+            </TabsContent>
 
             {/* Fixed Bottom Navigation */}
-            <TabsList className="fixed bottom-0 left-0 right-0 grid w-full grid-cols-3 h-16 border-t border-border z-10" style={{ backgroundColor: '#1e1e1e' }}>
+            <TabsList className="fixed bottom-0 left-0 right-0 grid w-full grid-cols-4 h-16 border-t border-border z-10" style={{ backgroundColor: '#1e1e1e' }}>
               <TabsTrigger 
                 value="assessment" 
                 className="flex flex-col items-center justify-center gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -451,6 +455,14 @@ export default function Home() {
               >
                 <TrendingUp className="w-5 h-5" />
                 <span>INSIGHTS</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="workouts" 
+                className="flex flex-col items-center justify-center gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              >
+                <Dumbbell className="w-5 h-5" />
+                <span>WORKOUTS</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="chat" 
