@@ -97,7 +97,7 @@ export default function Home() {
         "Send me a short text as Jocko: direct, disciplined, motivating. Use my current habits and leadership scores; call tools if helpful to fetch the last 7 days. Keep it punchy: 1–3 short sentences, no preamble.";
 
       const payload = {
-        model: 'openai/gpt-5-mini',
+        model: 'x-ai/grok-code-fast-1',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMsg },
@@ -139,7 +139,7 @@ export default function Home() {
           toolApiMsgs.push({ role: 'tool', content: contentStr, tool_call_id: tc.id });
         }
         const followPayload = {
-          model: 'openai/gpt-5-mini',
+          model: 'x-ai/grok-code-fast-1',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMsg },

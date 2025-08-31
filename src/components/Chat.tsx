@@ -87,7 +87,7 @@ export default function Chat() {
 
     try {
       const payload = {
-        model: "openai/gpt-5-mini",
+        model: "x-ai/grok-code-fast-1",
         messages: [
           { role: "system", content: systemPrompt },
           ...apiHistory,
@@ -154,7 +154,7 @@ export default function Chat() {
 
         // Follow-up call including the tool results so the assistant can respond
         const followPayload = {
-          model: "openai/gpt-5-mini",
+          model: "x-ai/grok-code-fast-1",
           messages: [{ role: "system", content: systemPrompt }, ...apiHistory, { role: "user", content: userMsg.content }, { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls }, ...toolApiMsgs],
           temperature: 0.3,
         };
