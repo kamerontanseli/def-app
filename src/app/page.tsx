@@ -1,13 +1,6 @@
 "use client";
 
-import React, {
-  useState,
-  useMemo,
-  useCallback,
-  useEffect,
-  useRef,
-} from "react";
-import Image from "next/image";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { format, addDays } from "date-fns";
 import { useHabits } from "@/hooks/useHabits";
 import { leadershipAttributes } from "@/lib/types";
@@ -58,13 +51,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import Chat from "@/components/Chat";
-import {
-  OPENROUTER_KEY,
-  OPENROUTER_URL,
-  SYSTEM_PROMPT,
-  tools,
-  processToolCallsAndFollowUp,
-} from "@/lib/ai";
+ 
 
 type TaskItem = { id: string; text: string; done: boolean };
 
@@ -148,14 +135,7 @@ const iconMap = {
   Star,
 };
 
-type ToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
-type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }>;
-};
+ 
 
 export default function Home() {
   const {
@@ -169,10 +149,6 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = previous week, etc.
   const [activeTab, setActiveTab] = useState("assessment");
-  const [aiMessage, setAiMessage] = useState("");
-  const [isLoadingMessage, setIsLoadingMessage] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const debouncedTimerRef = useRef<NodeJS.Timeout | null>(null);
   type TaskItem = { id: string; text: string; done: boolean };
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [newTask, setNewTask] = useState("");
@@ -256,96 +232,7 @@ export default function Home() {
     if (score <= 7) return "bg-yellow-500";
     return "bg-green-500";
   };
-
-  const systemPrompt = SYSTEM_PROMPT;
-
-  const fetchAiMessageNow = useCallback(async () => {
-    try {
-      setAiError(null);
-      setIsLoadingMessage(true);
-      const apiKey = localStorage.getItem(OPENROUTER_KEY) || "";
-      if (!apiKey) {
-        throw new Error("Missing OpenRouter API key. Set it in the Chat tab.");
-      }
-      const referer =
-        typeof window !== "undefined" ? window.location.origin : "";
-
-      const userMsg =
-        "Send me a short text as Jocko: direct, disciplined, motivating. Use my current habits and leadership scores; call tools if helpful to fetch the last 7 days. Keep it punchy: 1–3 short sentences, no preamble.";
-
-      const payload = {
-        model: "x-ai/grok-code-fast-1",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMsg },
-        ],
-        tools,
-        tool_choice: "auto",
-        temperature: 0.3,
-      };
-
-      const res = await fetch(OPENROUTER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          ...(referer
-            ? { "HTTP-Referer": referer, "X-Title": "DEF Habits - Jocko Daily" }
-            : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
-      }
-      const data: ChatCompletionResponse = await res.json();
-      const choice = data.choices?.[0];
-      const msg = choice?.message;
-
-      let finalContent = msg?.content ?? "";
-      if (msg?.tool_calls?.length) {
-        const { finalContent: fc } = await processToolCallsAndFollowUp({
-          initialAssistant: {
-            content: msg.content || "",
-            tool_calls: msg.tool_calls,
-          },
-          systemPrompt,
-          userMsg,
-          apiKey,
-          referer,
-          xTitle: "DEF Habits - Jocko Daily",
-          model: "x-ai/grok-code-fast-1",
-          history: [],
-        });
-        finalContent = fc;
-      }
-
-      setAiMessage(finalContent);
-      // Persist last message and timestamp (24h gating for initial run)
-      try {
-        localStorage.setItem("jocko_daily_message", finalContent || "");
-        localStorage.setItem("jocko_daily_last", String(Date.now()));
-      } catch (err) {
-        console.error(err);
-      }
-    } catch (e: unknown) {
-      console.error(e);
-      const msg = e instanceof Error ? e.message : String(e);
-      setAiError(msg || "Failed to fetch Jocko message");
-    } finally {
-      setIsLoadingMessage(false);
-    }
-  }, [systemPrompt]);
-
-  const scheduleAiRefresh = useCallback(() => {
-    if (debouncedTimerRef.current) {
-      clearTimeout(debouncedTimerRef.current);
-    }
-    debouncedTimerRef.current = setTimeout(() => {
-      fetchAiMessageNow();
-    }, 5000);
-  }, [fetchAiMessageNow]);
+  
 
   // Load tasks for the selected date
   useEffect(() => {
@@ -371,7 +258,6 @@ export default function Home() {
     const next = [...active, { id, text, done: false }, ...done];
     saveTasks(next);
     setNewTask("");
-    fetchAiMessageNow();
   };
 
   const toggleTask = (id: string) => {
@@ -381,7 +267,6 @@ export default function Home() {
     const active = updated.filter((t) => !t.done);
     const done = updated.filter((t) => t.done);
     saveTasks([...active, ...done]);
-    fetchAiMessageNow();
   };
 
   const removeTask = (id: string) => {
@@ -391,13 +276,10 @@ export default function Home() {
 
   const handleToggleCompletion = (habitId: string, date: string) => {
     toggleCompletion(habitId, date);
-    scheduleAiRefresh();
   };
 
   const handleSetScore = (attribute: string, date: string, value: number) => {
     setScore(attribute, date, value);
-    // Debounce with a shared timer so rapid changes collapse to one call
-    scheduleAiRefresh();
   };
 
   const habitCompletionData = dates.map((date) => ({
@@ -418,30 +300,7 @@ export default function Home() {
     [dates, getScore]
   );
 
-  useEffect(() => {
-    // Load last stored message immediately
-    try {
-      const saved = localStorage.getItem("jocko_daily_message");
-      if (saved) setAiMessage(saved);
-    } catch {}
-
-    // Trigger initial message at most once per 24 hours
-    try {
-      const lastStr = localStorage.getItem("jocko_daily_last");
-      const last = lastStr ? parseInt(lastStr, 10) : 0;
-      const now = Date.now();
-      if (!last || now - last >= 24 * 60 * 60 * 1000) {
-        fetchAiMessageNow();
-      }
-    } catch (err) {
-      console.error(err);
-      fetchAiMessageNow();
-    }
-
-    return () => {
-      if (debouncedTimerRef.current) clearTimeout(debouncedTimerRef.current);
-    };
-  }, [fetchAiMessageNow]);
+  
 
   return (
     <div
@@ -487,48 +346,7 @@ export default function Home() {
               </p>
             </div>
 
-            <Card className="mt-4 bg-black">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Image
-                    src="/jocko-no-bg.png"
-                    alt="Jocko"
-                    width={40}
-                    height={40}
-                    className="rounded-xs h-10"
-                  />
-                  JOCKO&apos;S MESSAGE
-                </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveTab("chat")}
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Chat
-                </Button>
-              </CardHeader>
-              <CardContent className="h-[140px] overflow-auto">
-                {isLoadingMessage ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
-                    <p className="mt-4 text-sm text-muted-foreground">
-                      Generating message...
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    {aiError ? (
-                      <p className="text-red-400 text-xs">{aiError}</p>
-                    ) : (
-                      <p className="text-white leading-relaxed text-xs whitespace-pre-wrap">
-                        {aiMessage}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Jocko's message card removed from Assessment tab */}
 
             {/* Tasks Today */}
             <Card className="mt-4 bg-black">
