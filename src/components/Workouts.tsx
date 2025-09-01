@@ -16,22 +16,6 @@ export function Workouts() {
     return arr.filter((d) => d >= 1);
   }, [todayDay]);
 
-  const chartData = useMemo(() => {
-    const maxDay = Math.max(0, lastCompletedDay);
-    return Array.from({ length: maxDay }, (_, i) => {
-      const day = i + 1;
-      const { pushups, crunches, plankSeconds } = workoutCountsForDay(day);
-      return {
-        x: `D${day}`,
-        series: {
-          Pushups: pushups,
-          Crunches: crunches,
-          Plank: plankSeconds,
-        },
-      };
-    });
-  }, [lastCompletedDay]);
-
   return (
     <div className="mt-4 space-y-4">
       <Card className="bg-black">

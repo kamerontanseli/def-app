@@ -142,7 +142,7 @@ export function D3GroupedBarChart({ data, seriesOrder, colors, height = 300, hid
         .style("font-size", "12px")
         .text((d) => d);
     }
-  }, [data, seriesOrder, colors, width, height]);
+  }, [data, seriesOrder, colors, width, height, hideLegend]);
 
   return (
     <div ref={containerRef} className="w-full">

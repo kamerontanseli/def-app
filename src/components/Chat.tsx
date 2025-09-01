@@ -11,9 +11,8 @@ import {
   OPENROUTER_URL,
   OPENROUTER_KEY,
   tools,
-  getHabitProgressTool,
-  getLeadershipScoresTool,
   SYSTEM_PROMPT,
+  processToolCallsAndFollowUp,
 } from "@/lib/ai";
 
 type Role = "system" | "user" | "assistant" | "tool";
@@ -115,7 +114,7 @@ export default function Chat() {
       const choice = data.choices?.[0];
       const msg = choice?.message;
 
-      // Handle tool calls (single pass for simplicity)
+      // Handle tool calls via shared helper
       if (msg?.tool_calls?.length) {
         // Record assistant tool call message in both UI and API history
         const assistantToolCall: ChatMessage = {
@@ -129,50 +128,28 @@ export default function Chat() {
           { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls },
         ]);
 
-        const toolResults: ChatMessage[] = [];
-        const toolApiMsgs: APIMsg[] = [];
-        for (const tc of msg.tool_calls) {
-          const name = tc.function?.name;
-          const id = tc.id;
-          let result: unknown = null;
-          if (name === "get_habit_progress") {
-            result = getHabitProgressTool();
-          } else if (name === "get_leadership_scores") {
-            result = getLeadershipScoresTool();
-          }
-          const contentStr = JSON.stringify(result ?? { error: "unknown tool" });
-          toolResults.push({
-            role: "tool",
-            content: contentStr,
-            tool_call_id: id,
-            name,
-          });
-          toolApiMsgs.push({ role: "tool", content: contentStr, tool_call_id: id });
-        }
-        setMessages((m) => [...m, ...toolResults]);
+        const { toolApiMsgs, toolResults, finalContent: finalMsg } = await processToolCallsAndFollowUp({
+          initialAssistant: { content: msg.content || "", tool_calls: msg.tool_calls },
+          systemPrompt,
+          userMsg: userMsg.content,
+          apiKey,
+          referer,
+          xTitle: "DEF Habits - Jocko Chat",
+          model: "x-ai/grok-code-fast-1",
+          history: apiHistory,
+        });
+
+        // Show tool results in UI and add to API history
+        const toolMessagesForUI: ChatMessage[] = toolResults.map((t) => ({
+          role: "tool",
+          content: t.content,
+          tool_call_id: t.tool_call_id,
+          name: t.name,
+        }));
+        setMessages((m) => [...m, ...toolMessagesForUI]);
         setApiHistory((h) => [...h, ...toolApiMsgs]);
 
-        // Follow-up call including the tool results so the assistant can respond
-        const followPayload = {
-          model: "x-ai/grok-code-fast-1",
-          messages: [{ role: "system", content: systemPrompt }, ...apiHistory, { role: "user", content: userMsg.content }, { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls }, ...toolApiMsgs],
-          temperature: 0.3,
-        };
-        const res2 = await fetch(OPENROUTER_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            ...(referer ? { "HTTP-Referer": referer, "X-Title": "DEF Habits - Jocko Chat" } : {}),
-          },
-          body: JSON.stringify(followPayload),
-        });
-        if (!res2.ok) {
-          const txt = await res2.text();
-          throw new Error(txt || `HTTP ${res2.status}`);
-        }
-        const data2: ChatCompletionResponse = await res2.json();
-        const finalMsg = data2.choices?.[0]?.message?.content ?? "";
+        // Final assistant response
         setMessages((m) => [...m, { role: "assistant", content: finalMsg }]);
         setApiHistory((h) => [...h, { role: "assistant", content: finalMsg }]);
       } else {
@@ -213,7 +190,7 @@ export default function Chat() {
             Ask me about your progress, discipline, or priorities.
           </div>
         )}
-        {messages.map((m, idx) => (
+        {messages.filter(m => m.content.trim()).map((m, idx) => (
           <div key={idx} className={`space-y-2 ${m.role === "user" ? "flex flex-col items-end" : ""}`}>
             <div className="text-xs text-gray-500 flex items-center gap-2 uppercase">
               {m.role === "assistant" && (
